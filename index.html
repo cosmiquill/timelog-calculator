@@ -25,12 +25,34 @@
 <script>
 let finalResults = [];
 
-// Remove emojis (broad unicode ranges)
+// 🔥 Remove emojis
 function removeEmojis(text) {
   return text.replace(
     /[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2700}-\u{27BF}|\u{1F900}-\u{1F9FF}|\u{2600}-\u{26FF}]/gu,
     ''
   );
+}
+
+// 🔥 Remove webhook headers
+function removeWebhookHeaders(text) {
+  return text
+    .split("\n")
+    .filter(line => {
+      const l = line.trim();
+
+      // Remove known webhook noise
+      if (
+        l.startsWith("Duty Logger") ||
+        l.startsWith("APP") ||
+        l.includes("APP —") ||
+        /^\d{1,2}\/\d{1,2}\/\d{4}/.test(l) // date lines
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .join("\n");
 }
 
 function timeToSeconds(time) {
@@ -48,8 +70,9 @@ function secondsToTime(sec) {
 function parseLogs() {
   let text = document.getElementById("input").value;
 
-  // 🔥 Remove emojis first
+  // 🔥 Clean input
   text = removeEmojis(text);
+  text = removeWebhookHeaders(text);
 
   const blocks = text.split(/Player (?:On|Off) Duty/).filter(b => b.trim());
 
