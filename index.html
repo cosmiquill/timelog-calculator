@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Duty Log Parser</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    textarea { width: 100%; height: 200px; }
+    button { padding: 10px; margin-top: 10px; margin-right: 10px; }
+    pre { background: #f4f4f4; padding: 10px; }
+  </style>
+</head>
+<body>
+
+<h2>Duty Log Parser</h2>
+
+<textarea id="input" placeholder="Paste Discord logs here..."></textarea>
+<br>
+<button onclick="parseLogs()">Parse</button>
+<button onclick="exportCSV()">Export CSV</button>
+
+<h3>Output:</h3>
+<pre id="output"></pre>
+
+<script>
+let finalResults = [];
+
+// Remove emojis (broad unicode ranges)
+function removeEmojis(text) {
+  return text.replace(
+    /[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2700}-\u{27BF}|\u{1F900}-\u{1F9FF}|\u{2600}-\u{26FF}]/gu,
+    ''
+  );
+}
+
+function timeToSeconds(time) {
+  const [h, m, s] = time.split(":").map(Number);
+  return h * 3600 + m * 60 + s;
+}
+
+function secondsToTime(sec) {
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+  const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function parseLogs() {
+  let text = document.getElementById("input").value;
+
+  // 🔥 Remove emojis first
+  text = removeEmojis(text);
+
+  const blocks = text.split(/Player (?:On|Off) Duty/).filter(b => b.trim());
+
+  const totals = {};
+  const incomplete = new Set();
+
+  blocks.forEach(block => {
+    const nameMatch = block.match(/Player\s*\n(.+)/);
+    const altNameMatch = block.match(/^(.+?) is now/);
+    const timeMatch = block.match(/Total Time On Duty\s*\n(\d{2}:\d{2}:\d{2})/);
+
+    let name = null;
+
+    if (nameMatch) {
+      name = nameMatch[1].trim();
+    } else if (altNameMatch) {
+      name = altNameMatch[1].trim();
+    }
+
+    if (!name) return;
+
+    if (timeMatch) {
+      const seconds = timeToSeconds(timeMatch[1]);
+      totals[name] = (totals[name] || 0) + seconds;
+    } else {
+      incomplete.add(name);
+    }
+  });
+
+  finalResults = [];
+
+  let output = "";
+
+  const allPlayers = new Set([...Object.keys(totals), ...incomplete]);
+
+  allPlayers.forEach(name => {
+    if (incomplete.has(name)) {
+      finalResults.push({ name, time: "INCOMPLETE" });
+      output += `${name} - INCOMPLETE\n`;
+    } else {
+      const timeStr = secondsToTime(totals[name]);
+      finalResults.push({ name, time: timeStr });
+      output += `${name} - ${timeStr}\n`;
+    }
+  });
+
+  document.getElementById("output").textContent = output;
+}
+
+function exportCSV() {
+  if (finalResults.length === 0) {
+    alert("No data to export.");
+    return;
+  }
+
+  let csv = "Name,Total Time\n";
+
+  finalResults.forEach(row => {
+    csv += `"${row.name}","${row.time}"\n`;
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "duty_logs.csv";
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>
