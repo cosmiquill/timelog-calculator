@@ -5,14 +5,14 @@
   <title>Duty Log Parser</title>
   <style>
     body { font-family: Arial; padding: 20px; }
-    textarea { width: 100%; height: 200px; }
+    textarea { width: 100%; height: 250px; }
     button { padding: 10px; margin-top: 10px; margin-right: 10px; }
-    pre { background: #f4f4f4; padding: 10px; }
+    pre { background: #f4f4f4; padding: 10px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
 
-<h2>Duty Log Parser</h2>
+<h2>Duty Log Parser 🥷</h2>
 
 <textarea id="input" placeholder="Paste Discord logs here..."></textarea>
 <br>
@@ -25,7 +25,7 @@
 <script>
 let finalResults = [];
 
-// 🔥 Remove emojis
+// Remove emojis
 function removeEmojis(text) {
   return text.replace(
     /[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2700}-\u{27BF}|\u{1F900}-\u{1F9FF}|\u{2600}-\u{26FF}]/gu,
@@ -33,19 +33,18 @@ function removeEmojis(text) {
   );
 }
 
-// 🔥 Remove webhook headers
+// Remove Discord webhook headers
 function removeWebhookHeaders(text) {
   return text
     .split("\n")
     .filter(line => {
       const l = line.trim();
 
-      // Remove known webhook noise
       if (
         l.startsWith("Duty Logger") ||
-        l.startsWith("APP") ||
         l.includes("APP —") ||
-        /^\d{1,2}\/\d{1,2}\/\d{4}/.test(l) // date lines
+        l === "APP" ||
+        /^\d{1,2}\/\d{1,2}\/\d{4}/.test(l)
       ) {
         return false;
       }
@@ -70,50 +69,63 @@ function secondsToTime(sec) {
 function parseLogs() {
   let text = document.getElementById("input").value;
 
-  // 🔥 Clean input
   text = removeEmojis(text);
   text = removeWebhookHeaders(text);
 
-  const blocks = text.split(/Player (?:On|Off) Duty/).filter(b => b.trim());
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
 
   const totals = {};
   const incomplete = new Set();
 
-  blocks.forEach(block => {
-    const nameMatch = block.match(/Player\s*\n(.+)/);
-    const altNameMatch = block.match(/^(.+?) is now/);
-    const timeMatch = block.match(/Total Time On Duty\s*\n(\d{2}:\d{2}:\d{2})/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
 
-    let name = null;
+    // OFF DUTY detection
+    const offMatch = line.match(/^(.+?) is now off duty/);
+    if (offMatch) {
+      const name = offMatch[1].trim();
 
-    if (nameMatch) {
-      name = nameMatch[1].trim();
-    } else if (altNameMatch) {
-      name = altNameMatch[1].trim();
+      let time = null;
+
+      // Look ahead for time
+      for (let j = i; j < i + 6 && j < lines.length; j++) {
+        const tMatch = lines[j].match(/(\d{2}:\d{2}:\d{2})/);
+        if (tMatch) {
+          time = tMatch[1];
+          break;
+        }
+      }
+
+      if (time) {
+        const seconds = timeToSeconds(time);
+        totals[name] = (totals[name] || 0) + seconds;
+      } else {
+        incomplete.add(name);
+      }
     }
 
-    if (!name) return;
+    // ON DUTY detection (no off found later)
+    const onMatch = line.match(/^(.+?) is now on duty/);
+    if (onMatch) {
+      const name = onMatch[1].trim();
 
-    if (timeMatch) {
-      const seconds = timeToSeconds(timeMatch[1]);
-      totals[name] = (totals[name] || 0) + seconds;
-    } else {
-      incomplete.add(name);
+      if (!totals[name]) {
+        incomplete.add(name);
+      }
     }
-  });
+  }
 
   finalResults = [];
-
   let output = "";
 
   const allPlayers = new Set([...Object.keys(totals), ...incomplete]);
 
   allPlayers.forEach(name => {
-    if (incomplete.has(name)) {
+    if (incomplete.has(name) && !totals[name]) {
       finalResults.push({ name, time: "INCOMPLETE" });
       output += `${name} - INCOMPLETE\n`;
     } else {
-      const timeStr = secondsToTime(totals[name]);
+      const timeStr = secondsToTime(totals[name] || 0);
       finalResults.push({ name, time: timeStr });
       output += `${name} - ${timeStr}\n`;
     }
